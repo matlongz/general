@@ -55,3 +55,17 @@ nvim                                   # first interactive launch — extras' en
 - No DAP/debugger/test plugins (python-trim.lua enforces); no AI/Copilot plugins ever (AI happens in a separate CLI); no PR tooling (gh CLI covers it)
 - Keep LazyVim defaults (snacks picker, blink.cmp) — don't swap components
 - Update deliberately: `:Lazy update` monthly-ish → validate → commit; rollback = git revert lockfile + `:Lazy restore`
+
+## Syncing across machines (matlongz/general)
+
+Tracked in the `matlongz/general` dotfiles repo as a **bare repo with `$HOME` as
+work-tree** — files live in place, no symlinks:
+
+    alias general='git --git-dir=$HOME/.general.git --work-tree=$HOME'
+
+- Pull latest: `general pull`
+- Push edits: `general add ~/.config/nvim/<file> && general commit -m "…" && general push`
+- Safety: `status.showUntrackedFiles=no` + key-exclude patterns in
+  `.general.git/info/exclude` keep SSH keys/credentials out. Never `general add -A`.
+- Servers (tars) use sparse-checkout (`.general.git/info/sparse-checkout` = `.config/nvim/`)
+  so they sync ONLY this nvim config, not the laptop's `.ssh/config` / `.bash_profile`.
