@@ -5,8 +5,6 @@
 # the same mechanic used to build `case` (macOS) and `tars` (Debian).
 #
 # Supported: macOS arm64, Linux x86_64. Other platforms: edit the asset maps.
-# NOTE: assembled from the exact steps that provisioned case + tars; validate on
-# first run on a genuinely fresh box.
 set -eu
 DOT="$(cd "$(dirname "$0")" && pwd)"
 . "$DOT/versions.env"
