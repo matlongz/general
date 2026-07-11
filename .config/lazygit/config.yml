@@ -1,0 +1,7 @@
+gui:
+  # Accordion side panels: collapse all but the focused panel, so Local
+  # Branches / Commits shrink to a couple of rows when you're not on them.
+  expandFocusedSidePanel: true
+  # Focused panel gets 8 parts of column height vs 1 each for the collapsed
+  # panels (8/12 ~= 67%); raise for more, lower for less.
+  expandedSidePanelWeight: 8

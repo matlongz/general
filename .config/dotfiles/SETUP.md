@@ -6,8 +6,8 @@ profiles:
 
 - **workstation** (like `case`, macOS laptop): full dotfiles, renders `~/.ssh/config`
   + `~/.tmux.conf`, uses the editor interactively.
-- **server** (like `tars`, Debian): sparse-checkout `.config/nvim/` + `.config/dotfiles/`,
-  renders `~/.tmux.conf` only (never an ssh config), reachable via Tailscale.
+- **server** (like `tars`, Debian): sparse-checkout `.config/nvim/`, `.config/dotfiles/`,
+  and `.config/lazygit/`, renders `~/.tmux.conf` only (never an ssh config), reachable via Tailscale.
 
 Pinned versions are in `versions.env` (binaries), `../nvim/bootstrap-tools.sh`
 (LSP/formatter tools), and `../nvim/lazy-lock.json` (plugins). Bump deliberately.
@@ -23,7 +23,7 @@ git clone --bare https://github.com/matlongz/general.git "$HOME/.general.git"
 general() { git --git-dir="$HOME/.general.git" --work-tree="$HOME" "$@"; }
 # server profile only: limit to nvim + dotfiles BEFORE checkout
 git --git-dir="$HOME/.general.git" config core.sparseCheckout true
-printf '.config/nvim/\n.config/dotfiles/\n' > "$HOME/.general.git/info/sparse-checkout"
+printf '.config/nvim/\n.config/dotfiles/\n.config/lazygit/\n' > "$HOME/.general.git/info/sparse-checkout"
 general checkout -f main    # workstation: omit the two sparse lines to get everything
 ```
 
