@@ -1,0 +1,12 @@
+[Unit]
+Description=Scoped nftables guard: drop Tailscale UDP over IPv6 link-local (tailscale/tailscale#13705 workaround)
+Before=tailscaled.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables-tailscale-fe80-guard.nft
+ExecStop=/usr/sbin/nft destroy table inet tailscale_fe80_guard
+
+[Install]
+WantedBy=multi-user.target

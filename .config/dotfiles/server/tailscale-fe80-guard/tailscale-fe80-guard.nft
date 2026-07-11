@@ -1,0 +1,23 @@
+#!/usr/sbin/nft -f
+# Tailscale blackholes WireGuard data when it picks a direct path over IPv6
+# link-local endpoints on the home LAN (recurs after a peer laptop sleeps;
+# tailscale/tailscale#13705 — no official knob to disable fe80 endpoints).
+# Dropping link-local UDP on this server's tailscaled listen port (41641,
+# the default; if tailscaled is ever reconfigured with --port, update these
+# rules to match — verify with: ss -lun | grep 41641) prevents path
+# discovery from validating fe80 endpoints, so peers settle on the reliable
+# direct IPv4 LAN path. Server-side placement covers every peer that
+# connects to this server; no client-side config needed.
+# Isolated table: coexists with Docker/KIND iptables-nft rules; rollback is
+# `nft destroy table inet tailscale_fe80_guard` (exact inverse, no flush).
+destroy table inet tailscale_fe80_guard
+table inet tailscale_fe80_guard {
+	chain input {
+		type filter hook input priority filter; policy accept;
+		ip6 saddr fe80::/10 udp dport 41641 drop
+	}
+	chain output {
+		type filter hook output priority filter; policy accept;
+		ip6 daddr fe80::/10 udp sport 41641 drop
+	}
+}

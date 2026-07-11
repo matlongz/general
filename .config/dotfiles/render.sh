@@ -19,8 +19,8 @@ need_vars() {
 
 # Substitute ONLY the explicit placeholders via perl (values passed through env).
 subst() {
-  SSH_USER="$SSH_USER" TARS_LAN_IP="$TARS_LAN_IP" TAILNET="$TAILNET" \
-    perl -pe 's/\$\{(SSH_USER|TARS_LAN_IP|TAILNET)\}/$ENV{$1}/g' "$1"
+  SSH_USER="$SSH_USER" TARS_TS_IP="$TARS_TS_IP" TAILNET="$TAILNET" \
+    perl -pe 's/\$\{(SSH_USER|TARS_TS_IP|TAILNET)\}/$ENV{$1}/g' "$1"
 }
 
 # $1 template  $2 target  $3 do_subst(1|0)  $4 validator (optional)
@@ -43,7 +43,7 @@ case "$mode" in
     [ -f "$VARS" ] || { echo "missing $VARS (copy vars.env.example, fill in)" >&2; exit 1; }
     # shellcheck disable=SC1090
     . "$VARS"
-    need_vars SSH_USER TARS_LAN_IP TAILNET
+    need_vars SSH_USER TARS_TS_IP TAILNET
     render "$DOT/templates/ssh_config.tmpl" "$HOME/.ssh/config" 1 ssh_ok
     ;;
 esac

@@ -44,7 +44,7 @@ grep -q 'HOME/.local/bin:' ~/.bashrc 2>/dev/null || echo 'export PATH="$HOME/.lo
 ## 4. Render live configs from templates
 ```sh
 cp "$HOME/.config/dotfiles/vars.env.example" "$HOME/.config/dotfiles/vars.env"
-$EDITOR "$HOME/.config/dotfiles/vars.env"        # fill SSH_USER / TARS_LAN_IP / TAILNET
+$EDITOR "$HOME/.config/dotfiles/vars.env"        # fill SSH_USER / TARS_TS_IP / TAILNET
 "$HOME/.config/dotfiles/render.sh" all            # workstation: ssh + tmux (validates ssh -G)
 # server profile: "$HOME/.config/dotfiles/render.sh" tmux   (no vars.env needed for tmux)
 ```
@@ -63,11 +63,16 @@ nvim --headless "+Lazy! restore" +qa              # plugins at locked versions
   auto-falls-back to ASCII when `TERM=linux`.
 - **Tailscale** (server profile / remote access): `curl -fsSL https://tailscale.com/install.sh | sh`
   then `sudo tailscale up` and authenticate in a browser. See the `tars-remote-access` notes.
+- **Tailscale fe80 guard** (server profile, after Tailscale is up): prevents the
+  same-LAN link-local blackhole (peers' traffic times out after they sleep/wake).
+  Install per `../server/tailscale-fe80-guard/README.md` — two `install` commands
+  plus `systemctl enable --now tailscale-fe80-guard.service`.
 
 ## 7. Validate (nvim/README.md has the full checklist)
 `:LazyHealth` + `:checkhealth` (0 errors) · `:Mason` versions match · open a file per
 language (`:set ft?` = `htmldjango` on templates) · picker/neo-tree/diffview/lazygit launch ·
-`:Lazy` shows no dap/neotest/venv · `ssh tars` works (workstation).
+`:Lazy` shows no dap/neotest/venv · `ssh tars` works (workstation) ·
+`systemctl is-enabled tailscale-fe80-guard` = enabled (server).
 
 ## Notes
 - Never `general add -A`; add explicit paths. Secrets/live configs are blocked by the hook +

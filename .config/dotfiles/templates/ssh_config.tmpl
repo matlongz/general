@@ -1,16 +1,64 @@
 Include ~/.colima/ssh_config
 
+# ---------------------------------------------------------------------------
+# Per-server alias pattern (tars is the reference instance — copy this block
+# of Host entries and adjust names/values to add another server):
+#   <name>          plain shell over the tailnet IP — scp/one-off commands
+#   <name>-tmux     interactive: attach tmux + session picker, over tailnet IP
+#   <name>-lan      fallback over mDNS when the Tailscale app is off (home LAN only)
+#   <name>-ts       same as <name> but via the MagicDNS name instead of the IP
+#   <name>-ts-tmux  same as <name>-tmux via the MagicDNS name
+# The tailnet IP is assigned once when the node joins and never changes, so
+# pinning it is safe; MagicDNS spellings break if the tailnet is ever renamed.
+# ---------------------------------------------------------------------------
+
 Host tars
-    # Pinned IP to skip the slow mDNS (.local) lookup. If the router ever
-    # hands tars a different address, update this or restore tars.local.
-    HostName ${TARS_LAN_IP}
+    # Tailscale IP: stable (never reassigned), skips the slow mDNS (.local)
+    # lookup, and works from any network — on the home LAN Tailscale takes
+    # the direct local path so there's no speed penalty. Requires the
+    # Tailscale app to be running; use `tars-lan` if it's off.
+    HostName ${TARS_TS_IP}
     User ${SSH_USER}
     IdentityFile ~/.ssh/id_ed25519
     AddressFamily inet
+    # Detect a dead link (e.g. after the Mac sleeps) and exit cleanly
+    # instead of hanging in a broken-pipe/raw-mode mess.
+    ServerAliveInterval 20
+    ServerAliveCountMax 3
+    # Rely solely on the encrypted ServerAlive probe; disable the
+    # unencrypted (spoofable) TCP-layer keepalive.
+    TCPKeepAlive no
 
-# External access over the Tailscale tailnet (works from any network, no open
-# inbound ports). MagicDNS name is stable across IP changes; requires the
-# Tailscale app running/connected on this Mac. Uses the same SSH key as LAN.
+# Convenience alias: `ssh tars-tmux` attaches to tmux (creating session
+# "main" if none exists) and lands on the interactive session picker —
+# arrows + Enter to choose, q to stay in "main". Use this for interactive
+# work; use `ssh tars` for scp/one-off commands.
+Host tars-tmux
+    HostName ${TARS_TS_IP}
+    User ${SSH_USER}
+    IdentityFile ~/.ssh/id_ed25519
+    AddressFamily inet
+    ServerAliveInterval 20
+    ServerAliveCountMax 3
+    TCPKeepAlive no
+    RequestTTY yes
+    RemoteCommand tmux new-session -A -s main \; choose-tree -Zs
+
+# Fallback for when the Tailscale app is not running: mDNS on the home LAN.
+# Self-heals across router DHCP renumbering (unlike a pinned LAN IP), but
+# only works on the same network as the server.
+Host tars-lan
+    HostName tars.local
+    User ${SSH_USER}
+    IdentityFile ~/.ssh/id_ed25519
+    AddressFamily inet
+    ServerAliveInterval 20
+    ServerAliveCountMax 3
+    TCPKeepAlive no
+
+# MagicDNS spelling of the same tailnet path as `tars` — kept for
+# readability in scripts and as a cross-check; breaks if the tailnet is
+# renamed, whereas the pinned tailnet IP does not.
 Host tars-ts
     HostName tars.${TAILNET}
     User ${SSH_USER}
@@ -19,29 +67,10 @@ Host tars-ts
     ServerAliveCountMax 3
     TCPKeepAlive no
 
-# Interactive external work over the tailnet: same tmux session ("main") as
-# `tars-tmux`, so you can detach on the LAN and reattach from anywhere with
-# processes still running. tmux survives the flakier external link across drops.
-# Use `tars-ts` (plain) for scp/one-off commands.
 Host tars-ts-tmux
     HostName tars.${TAILNET}
     User ${SSH_USER}
     IdentityFile ~/.ssh/id_ed25519
-    ServerAliveInterval 20
-    ServerAliveCountMax 3
-    TCPKeepAlive no
-    RequestTTY yes
-    RemoteCommand tmux new-session -A -s main \; choose-tree -Zs
-
-# Convenience alias: `ssh tars-tmux` attaches to tmux (creating session
-# "main" if none exists) and lands on the interactive session picker —
-# arrows + Enter to choose, q to stay in "main". Use this for interactive
-# work; use `ssh tars` for scp/one-off commands.
-Host tars-tmux
-    HostName ${TARS_LAN_IP}
-    User ${SSH_USER}
-    IdentityFile ~/.ssh/id_ed25519
-    AddressFamily inet
     ServerAliveInterval 20
     ServerAliveCountMax 3
     TCPKeepAlive no
