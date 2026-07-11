@@ -22,3 +22,8 @@ vim.filetype.add({
 if vim.env.SSH_TTY then
   vim.g.clipboard = "osc52"
 end
+
+-- Smooth horizontal scrolling for long lines (wrap is off by default): move one
+-- column at a time instead of half-screen jumps, and keep context past the cursor.
+vim.opt.sidescroll = 1
+vim.opt.sidescrolloff = 8
