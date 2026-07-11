@@ -8,6 +8,10 @@ return {
       { "<leader>gd", "<cmd>DiffviewOpen<cr>", desc = "Diffview: working tree" },
       { "<leader>gD", "<cmd>DiffviewFileHistory %<cr>", desc = "Diffview: file history" },
     },
-    opts = {},
+    -- Per-window diff colours (deletions red left, additions green right, neutral
+    -- filler) like VSCode, instead of vanilla vim diff. Colours tuned in plugins/colorscheme.lua.
+    opts = {
+      enhanced_diff_hl = true,
+    },
   },
 }
