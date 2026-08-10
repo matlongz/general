@@ -39,6 +39,26 @@ chmod 755 /etc/grub.d/08_desktop_server
 echo "Wrote /etc/grub.d/08_desktop_server (root UUID $UUID${EXTRA:+, extra: $EXTRA})"
 echo
 
+# ---- 0. stray generators in /etc/grub.d ------------------------------------
+# grub-mkconfig executes EVERY executable file in /etc/grub.d, whatever it is
+# named. A backup copy left there (cp -a preserves the +x bit!) keeps emitting
+# its old menuentries: you get duplicate entries, a duplicate menuentry_id that
+# makes GRUB_DEFAULT ambiguous, and — worst — a stale Desktop entry still
+# pinning systemd.unit=, which silently re-breaks offline updates.
+STRAY=$(find /etc/grub.d -maxdepth 1 -type f -perm -u+x \
+        \( -name '*.bak' -o -name '*.bak-*' -o -name '*.orig' -o -name '*.old' \
+           -o -name '*~' -o -name '*.save' -o -name '*.dpkg-*' -o -name '*.disabled' \) \
+        2>/dev/null || true)
+if [ -n "$STRAY" ]; then
+    echo "!! EXECUTABLE backup/stray files in /etc/grub.d — grub-mkconfig WILL run these:" >&2
+    printf '     %s\n' $STRAY >&2
+    echo "   They emit duplicate menu entries and may still pin systemd.unit=." >&2
+    echo "   Move them OUT of /etc/grub.d (chmod -x is not enough to be safe):" >&2
+    for s in $STRAY; do echo "     mv $s /root/" >&2; done
+    FAILED=1
+fi
+echo
+
 # ---- 1. default.target ----------------------------------------------------
 # The Desktop side is 10_linux's stock entry, which boots default.target.
 CURRENT_DEFAULT=$(systemctl get-default 2>/dev/null || echo unknown)

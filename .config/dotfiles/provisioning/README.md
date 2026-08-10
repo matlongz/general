@@ -138,6 +138,12 @@ cat /proc/sys/fs/inotify/max_user_watches /proc/sys/fs/inotify/max_user_instance
 ulimit -Sn ; ulimit -Hn                          # 65536 / 1048576 in a fresh login
 
 # grub menu
+# FIRST: no stray executable generators. grub-mkconfig runs EVERY executable
+# file in /etc/grub.d whatever it is named, so a backup left there (cp -a
+# preserves +x) keeps emitting its old entries — duplicate menu items, a
+# duplicate menuentry_id that makes GRUB_DEFAULT ambiguous, and a stale Desktop
+# entry still pinning systemd.unit=. Move strays out; chmod -x is not enough.
+ls -l /etc/grub.d/ | grep -vE '^total|README'   # expect ONLY NN_name files
 sudo grep -E "^\s*(menuentry|submenu)" /boot/grub/grub.cfg
 #   expect: Server (this kit), then stock "Debian GNU/Linux", then
 #   "Advanced options" submenu — and NO second desktop-ish entry
