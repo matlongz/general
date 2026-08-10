@@ -20,28 +20,27 @@ log() { logger -t boot-profile "$1"; echo "boot-profile: $1"; }
 
 # ---- determine mode (literal match, no regex) ----
 # Priority: arg > boot_profile= > systemd.unit= (legacy) > DEFAULT_MODE.
-#
-# Desktop mode is 10_linux's stock entry and carries boot_profile=desktop via
-# GRUB_CMDLINE_LINUX_DEFAULT. It has no systemd.unit= pin, because that would
-# break offline system updates (grub/08_desktop_server.template explains why).
-# The systemd.unit= branch below is NOT dead code: it keeps hosts whose GRUB
-# entries predate boot_profile= working until they're regenerated.
+# systemd.unit= is read for entries generated before boot_profile= existed.
+# Recovery entries carry neither token and fall through to DEFAULT_MODE, which
+# is harmless: boot-profile.service is WantedBy=multi-user.target and rescue
+# mode does not pull it in.
 MODE="$1"
 if [ -z "$MODE" ]; then
     MODE="$DEFAULT_MODE"
+    set -f                      # /proc/cmdline is unquoted below; don't glob it
     for tok in $(cat /proc/cmdline); do
         case "$tok" in
             systemd.unit=multi-user.target) MODE=server  ;;
             systemd.unit=graphical.target)  MODE=desktop ;;
         esac
     done
-    # boot_profile= wins over the legacy systemd.unit= reading above.
-    for tok in $(cat /proc/cmdline); do
+    for tok in $(cat /proc/cmdline); do    # second pass: boot_profile= wins
         case "$tok" in
             boot_profile=server)  MODE=server  ;;
             boot_profile=desktop) MODE=desktop ;;
         esac
     done
+    set +f
 fi
 
 set_powerprofile() {   # $1 = profile name (via power-profiles-daemon if present)

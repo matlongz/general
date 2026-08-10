@@ -118,7 +118,7 @@ Reconnect your SSH session after step 3 so the new `nofile` soft limit applies.
 | `DESKTOP_DAEMONS` | Units stopped in **server** mode / started in **desktop** mode (space-separated). Trim to what the host has. |
 | `SERVER_PROFILE` / `DESKTOP_PROFILE` | power-profiles-daemon profile per mode (`powerprofilesctl list`). |
 | `SERVER_STOP_EXTRA` | Extra units to stop **only** in server mode — e.g. a data stack to pause during load tests: `SERVER_STOP_EXTRA="postgresql.service"`. |
-| `DEFAULT_MODE` | Last-resort fallback when the cmdline has neither `boot_profile=` nor `systemd.unit=`. Set `"server"` on a pure headless box with no Desktop GRUB entry. Hosts using the current GRUB entries always carry an explicit `boot_profile=`, so this rarely decides anything. |
+| `DEFAULT_MODE` | Fallback when the cmdline has neither `boot_profile=` nor `systemd.unit=`. Server/Desktop and the Advanced entries all carry a marker; **recovery entries do not**, so this decides their mode. Set `"server"` on a headless box with no Desktop entry. |
 
 Apply a mode change live without reboot: `sudo boot_profile.sh server` (or `desktop`).
 
@@ -138,17 +138,19 @@ cat /proc/sys/fs/inotify/max_user_watches /proc/sys/fs/inotify/max_user_instance
 ulimit -Sn ; ulimit -Hn                          # 65536 / 1048576 in a fresh login
 
 # grub menu
-# FIRST: no stray executable generators. grub-mkconfig runs EVERY executable
-# file in /etc/grub.d whatever it is named, so a backup left there (cp -a
-# preserves +x) keeps emitting its old entries — duplicate menu items, a
-# duplicate menuentry_id that makes GRUB_DEFAULT ambiguous, and a stale Desktop
-# entry still pinning systemd.unit=. Move strays out; chmod -x is not enough.
-ls -l /etc/grub.d/ | grep -vE '^total|README'   # expect ONLY NN_name files
+# Any executable file in /etc/grub.d is a generator, whatever its name — a
+# backup copy (cp -a keeps +x) keeps emitting its entries. Expect only NN_name:
+ls -l /etc/grub.d/ | grep -vE '^total|README'
+grep -lE 'gnulinux-(server|desktop)' /etc/grub.d/*   # only 08_desktop_server
+# 10_linux must not emit its own top-level entry (would duplicate Desktop).
+# Test the code, not the LOCAL EDIT comment — a conffile merge can keep the
+# comment and restore the call:
+grep -nE '^\s*linux_entry[^#]*\ssimple' /etc/grub.d/10_linux   # no match = suppressed
+
 sudo grep -E "^\s*(menuentry|submenu)" /boot/grub/grub.cfg
-#   expect: Server (this kit), then stock "Debian GNU/Linux", then
-#   "Advanced options" submenu — and NO second desktop-ish entry
+#   expect: Server, Desktop, "Advanced options" submenu (+ os-prober / UEFI
+#   firmware / fwupd entries, which are normal)
 sudo grep -E "^\s+linux\s" /boot/grub/grub.cfg   # Desktop: NO systemd.unit=; Server: multi-user.target
-grep -c 'LOCAL EDIT' /etc/grub.d/10_linux        # 1 = simple entry still suppressed
 systemctl get-default                            # graphical.target (Desktop relies on this)
 grep -o 'boot_profile=[a-z]*' /proc/cmdline      # matches the entry you booted
 
@@ -167,7 +169,7 @@ journalctl -u packagekit-offline-update.service -b -1   # non-empty = the instal
 
 ---
 
-## Why the tuning values are what they are (so nobody re-researches)
+## Why the tuning values are what they are
 
 - **inotify (`fs.inotify.max_user_watches=1048576`, `max_user_instances=8192`)** —
   the #1 kind scaling bottleneck; low values cause `too many open files` and stuck
@@ -212,8 +214,7 @@ journalctl -u packagekit-offline-update.service -b -1   # non-empty = the instal
   disable/mask). Runtime `systemctl isolate` does NOT re-apply — re-run
   `boot_profile.sh <mode>` manually if you switch live.
 
-- **Why Desktop must not pin `systemd.unit=`** — this cost a real debugging
-  session on `tars`; don't "tidy" it back.
+- **Why Desktop must not pin `systemd.unit=`**
 
   Pinning `systemd.unit=` on the kernel cmdline makes systemd boot that unit
   **directly and never resolve `default.target`**. PackageKit/GNOME Software
@@ -249,12 +250,11 @@ journalctl -u packagekit-offline-update.service -b -1   # non-empty = the instal
   Consequence: **offline updates apply in Desktop mode only.** `unattended-upgrades`
   still handles security updates in both modes.
 
-  Because desktop mode no longer carries `systemd.unit=`, mode detection moved to
-  a dedicated `boot_profile=` token: `boot_profile=desktop` rides on
-  `GRUB_CMDLINE_LINUX_DEFAULT` (so the stock entries carry it, but not recovery
-  entries — `10_linux` omits `_DEFAULT` there), and `boot_profile=server` is
-  written into the Server entry. Boot target and runtime profile are now
-  independent, so changing one can't silently change the other again.
+  Mode detection uses a separate `boot_profile=` token, so the boot target and
+  the runtime profile are independent. Server and Desktop carry it directly;
+  `GRUB_CMDLINE_LINUX_DEFAULT` supplies it to `10_linux`'s Advanced entries.
+  Recovery entries get neither (`10_linux` omits `_DEFAULT` there) and fall back
+  to `DEFAULT_MODE`.
 
 ---
 

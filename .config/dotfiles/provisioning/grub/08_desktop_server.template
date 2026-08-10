@@ -1,47 +1,34 @@
 #!/bin/sh
 exec tail -n +3 $0
-# Custom top-level GRUB entries: Server (CLI) and Desktop (GUI). Numbered 08_ so
-# they render ABOVE 10_linux's "Advanced options" submenu. Both use the /vmlinuz
-# + /initrd.img symlinks (Debian re-points them on kernel upgrade), so the
-# entries survive kernel updates without regeneration.
+# Top-level GRUB entries: Server (CLI) and Desktop (GUI), rendered above
+# 10_linux's "Advanced options" submenu. Both load the /vmlinuz + /initrd.img
+# symlinks, which Debian re-points on kernel upgrade, so they survive kernel
+# updates without regeneration.
 #
-# THESE ARE THE ONLY TOP-LEVEL ENTRIES, BY DESIGN.
-#   /etc/grub.d/10_linux is locally patched to comment out its top-level
-#   "simple" entry (search it for "LOCAL EDIT"), so it contributes only the
-#   "Advanced options" submenu — kernel rollback and recovery mode. Without that
-#   patch you would get a third top-level entry duplicating Desktop.
-#   ⚠️ 10_linux is a dpkg CONFFILE. On a grub-common upgrade, dpkg will ask
-#   whether to keep your patched version. Answering "install the package
-#   maintainer's version" silently restores the duplicate entry. Keep yours, or
-#   re-apply the edit. `make-grub-entries.sh` warns if the patch has gone.
+# Desktop carries no systemd.unit=. An explicit systemd.unit= makes systemd boot
+# that unit instead of resolving default.target, which bypasses
+# systemd-system-update-generator and silently disables PackageKit offline
+# updates. Server pins multi-user.target on purpose; offline updates are
+# therefore Desktop-only. See README.md, "Why Desktop must not pin systemd.unit=".
 #
-# DESKTOP MUST NEVER PIN systemd.unit= (do not "fix" this)
-#   Pinning it makes systemd boot that unit directly and never resolve
-#   default.target — which silently disables PackageKit/GNOME Software offline
-#   updates. Staged updates never install and NOTHING is logged: the box
-#   reboots, skips the update, and Software still lists them as pending.
-#   Desktop therefore carries no systemd.unit= and relies on default.target,
-#   which make-grub-entries.sh sets to graphical.target.
-#   Server keeps its pin deliberately — headless boxes don't run GNOME Software,
-#   and pinning multi-user.target is what makes "Server" mean server.
-#   Consequence: offline updates apply in Desktop mode only. unattended-upgrades
-#   still covers security updates in both modes.
-#   Full explanation: README.md, "Why Desktop must not pin systemd.unit=".
+# boot_profile=<mode> selects the runtime profile (boot_profile.sh), kept
+# separate from systemd.unit= so the boot target and the profile stay
+# independent. GRUB_CMDLINE_LINUX_DEFAULT carries boot_profile=desktop so
+# 10_linux's Advanced entries, which also boot default.target, are marked too.
 #
-# Mode for boot_profile.sh comes from boot_profile=<mode>, NOT systemd.unit=, so
-# boot target and runtime profile stay independent. Each entry carries its own
-# marker below; GRUB_CMDLINE_LINUX_DEFAULT carries boot_profile=desktop so the
-# Advanced options entries (which also boot default.target) are marked too.
+# 10_linux is locally patched to comment out its own top-level "simple" entry,
+# which would otherwise duplicate Desktop. It is a dpkg conffile, so a
+# grub-common upgrade can restore it; make-grub-entries.sh checks.
 #
-# Placeholders substituted per host by make-grub-entries.sh (underscores omitted
-# below so this comment isn't itself substituted):
-#   ROOT_UUID      -> live root filesystem UUID, from `findmnt -no UUID /`
-#   EXTRA_CMDLINE  -> extra kernel params from the EXTRA_CMDLINE env var (empty
-#                     by default), e.g. for hibernation resume:
-#                     EXTRA_CMDLINE="resume=UUID=<fs> resume_offset=<N>"
+# Substituted per host by make-grub-entries.sh (underscores omitted here so this
+# comment is not itself substituted): ROOT_UUID from `findmnt -no UUID /`, and
+# EXTRA_CMDLINE from the env var of that name, e.g.
+#   EXTRA_CMDLINE="resume=UUID=<fs> resume_offset=<N>"
 #
-# ASSUMES / and /boot are on the SAME partition (so /vmlinuz resolves). With a
-# separate /boot partition, adjust the linux/initrd paths accordingly.
+# Assumes / and /boot on one partition (so /vmlinuz resolves), GPT, and ext*.
+# Adjust the insmod/linux/initrd lines for a separate /boot, MBR, btrfs or LVM.
+# These entries do not inherit GRUB_CMDLINE_LINUX; pass anything needed via
+# EXTRA_CMDLINE.
 
 menuentry 'Debian GNU/Linux Server' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-server' {
 	load_video
