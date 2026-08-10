@@ -1,0 +1,48 @@
+#!/bin/sh
+exec tail -n +3 $0
+# Custom top-level GRUB entry: Server (CLI, no GUI). Numbered 08_ so it renders
+# ABOVE 10_linux's entries. Uses /vmlinuz + /initrd.img symlinks (Debian
+# re-points them on kernel upgrade), so the entry survives kernel updates.
+#
+# TWO THINGS HERE ARE LOAD-BEARING. Do not "tidy" either one:
+#
+#   1. There is NO Desktop entry. Desktop mode is 10_linux's stock "Debian
+#      GNU/Linux" entry, which boots default.target and uses a versioned kernel
+#      path (this file follows the /vmlinuz symlink, which a failed kernel
+#      postinst can leave dangling). Adding one back would duplicate it AND cost
+#      you 10_linux's "Advanced options" — kernel rollback and recovery mode.
+#
+#   2. Desktop must NEVER pin systemd.unit=. Pinning it makes systemd boot that
+#      unit directly and never resolve default.target — which silently disables
+#      PackageKit/GNOME Software offline updates, with no error anywhere. The
+#      Server entry keeps its pin because headless boxes don't run GNOME
+#      Software. Consequence: offline updates apply in Desktop mode only.
+#      Full explanation + how to verify: README.md, "Why there is no custom
+#      Desktop entry".
+#
+# Mode for boot_profile.sh comes from boot_profile=<mode>, NOT systemd.unit=, so
+# boot target and runtime profile stay independent. Desktop gets its marker from
+# GRUB_CMDLINE_LINUX_DEFAULT (set by make-grub-entries.sh); this file is
+# hand-written and ignores that variable, so Server carries its own below.
+#
+# Placeholders substituted per host by make-grub-entries.sh (underscores omitted
+# below so this comment isn't itself substituted):
+#   ROOT_UUID      -> live root filesystem UUID, from `findmnt -no UUID /`
+#   EXTRA_CMDLINE  -> extra kernel params from the EXTRA_CMDLINE env var (empty
+#                     by default), e.g. for hibernation resume:
+#                     EXTRA_CMDLINE="resume=UUID=<fs> resume_offset=<N>"
+#
+# ASSUMES / and /boot are on the SAME partition (so /vmlinuz resolves). With a
+# separate /boot partition, adjust the linux/initrd paths accordingly.
+
+menuentry 'Debian GNU/Linux Server (CLI, no GUI)' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-server' {
+	load_video
+	insmod gzio
+	insmod part_gpt
+	insmod ext2
+	search --no-floppy --fs-uuid --set=root __ROOT_UUID__
+	echo 'Loading Linux (server -- multi-user.target) ...'
+	linux /vmlinuz root=UUID=__ROOT_UUID__ ro quiet __EXTRA_CMDLINE__boot_profile=server systemd.unit=multi-user.target
+	echo 'Loading initial ramdisk ...'
+	initrd /initrd.img
+}

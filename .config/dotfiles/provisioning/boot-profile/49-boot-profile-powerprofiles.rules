@@ -1,0 +1,9 @@
+// /etc/polkit-1/rules.d/49-boot-profile-powerprofiles.rules
+// Let root (the boot-profile oneshot) switch power profiles non-interactively.
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.UPower.PowerProfiles.switch-profile" ||
+         action.id == "net.hadess.PowerProfiles.switch-profile") &&
+        subject.user == "root") {
+        return polkit.Result.YES;
+    }
+});
