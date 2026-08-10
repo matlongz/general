@@ -41,7 +41,7 @@ and the GRUB UUID (generated per host).
 | `load-test/99-kind-loadtest.conf` | `/etc/sysctl.d/` | Kernel tuning for kind + host-side load generators | No |
 | `load-test/99-loadtest-limits.conf` | `/etc/security/limits.d/` | Raises `nofile` for login/SSH sessions | No |
 | `console/console_autologout.sh` | `/etc/profile.d/console_autologout.sh` | Auto-logout idle **physical console** sessions (not SSH) | No |
-| `grub/08_desktop_server.template` | (generated) | Template for the **Server** GRUB menu entry (desktop = stock `10_linux` entry) | UUID substituted |
+| `grub/08_desktop_server.template` | (generated) | Template for BOTH top-level GRUB entries (Server + Desktop) | UUID substituted |
 | `grub/make-grub-entries.sh` | (run once) | Generates `/etc/grub.d/08_desktop_server`; also sets `default.target` and adds `boot_profile=desktop` to `GRUB_CMDLINE_LINUX_DEFAULT` | — |
 
 ---
@@ -49,11 +49,13 @@ and the GRUB UUID (generated per host).
 ## Prerequisites
 
 - Debian 12/13 with systemd and GRUB.
-- **Boot-mode switching** needs the Server GRUB entry (see step 1) plus the stock
-  `10_linux` entries, which provide desktop mode. Assumes `/` and `/boot` are on
-  the **same partition** (the Server entry uses `/vmlinuz` symlinks).
-  Do **not** disable `10_linux` — it is desktop mode, and its "Advanced options"
-  submenu is the only way to boot an older kernel or recovery mode.
+- **Boot-mode switching** needs the two GRUB entries (see step 1), and assumes
+  `/` and `/boot` are on the **same partition** (they use `/vmlinuz` symlinks).
+- `/etc/grub.d/10_linux` must be patched to suppress its top-level "simple"
+  entry (search it for `LOCAL EDIT`), or you get a third entry duplicating
+  Desktop. It is a dpkg conffile — keep your version on `grub-common` upgrades.
+  Do **not** disable `10_linux` outright: its "Advanced options" submenu is the
+  only way to boot an older kernel or recovery mode.
 - `power-profiles-daemon` is **optional** — `boot_profile.sh` skips the CPU step
   if it's absent.
 - **Load testing** additionally needs `docker`, `kind`, `kubectl`, and the user
@@ -73,19 +75,17 @@ pattern, so it lands on both the workstation and server profiles.
 ```sh
 cd ~/.config/dotfiles/provisioning
 
-# 1. GRUB Server menu entry (per-host UUID). Desktop = stock 10_linux entry.
+# 1. GRUB Server + Desktop menu entries (per-host UUID)
 sudo sh grub/make-grub-entries.sh
 #   ^ also: sets default.target=graphical.target, and adds boot_profile=desktop
 #     to GRUB_CMDLINE_LINUX_DEFAULT, preserving any existing kernel args (it
 #     reads them by sourcing the file, as grub-mkconfig does, so single-quoted
 #     and unquoted forms are handled). Backs up /etc/default/grub first, and
 #     EXITS NON-ZERO if any step could not complete — check before update-grub.
-sudo sed -i "s/^GRUB_DEFAULT=.*/GRUB_DEFAULT='gnulinux-server'/" /etc/default/grub  # or 1 for desktop
+sudo sed -i "s/^GRUB_DEFAULT=.*/GRUB_DEFAULT='gnulinux-server'/" /etc/default/grub  # or 'gnulinux-desktop'
 sudo update-grub
-# Menu: "Debian GNU/Linux Server" (this kit), then the stock "Debian GNU/Linux"
-# (= desktop) and "Advanced options" (kernel rollback + recovery).
-# There is deliberately no custom Desktop entry — it would duplicate the stock
-# one, which is strictly better (versioned kernel path, not the /vmlinuz symlink).
+# Menu: "Debian GNU/Linux Server", "Debian GNU/Linux Desktop" (both this kit),
+# then "Advanced options" (kernel rollback + recovery) from the patched 10_linux.
 # (optional: match boot resolution)  add to /etc/default/grub:
 #   GRUB_GFXMODE=1920x1080 ; GRUB_GFXPAYLOAD_LINUX=keep ; then update-grub
 
@@ -147,8 +147,9 @@ ls -l /etc/grub.d/ | grep -vE '^total|README'   # expect ONLY NN_name files
 sudo grep -E "^\s*(menuentry|submenu)" /boot/grub/grub.cfg
 #   expect: Server (this kit), then stock "Debian GNU/Linux", then
 #   "Advanced options" submenu — and NO second desktop-ish entry
-sudo grep -E "^\s+linux\s" /boot/grub/grub.cfg   # stock: no systemd.unit=; Server: multi-user.target
-systemctl get-default                            # graphical.target (stock entry relies on this)
+sudo grep -E "^\s+linux\s" /boot/grub/grub.cfg   # Desktop: NO systemd.unit=; Server: multi-user.target
+grep -c 'LOCAL EDIT' /etc/grub.d/10_linux        # 1 = simple entry still suppressed
+systemctl get-default                            # graphical.target (Desktop relies on this)
 grep -o 'boot_profile=[a-z]*' /proc/cmdline      # matches the entry you booted
 
 # offline system updates reach the installer (Desktop mode)
@@ -211,9 +212,8 @@ journalctl -u packagekit-offline-update.service -b -1   # non-empty = the instal
   disable/mask). Runtime `systemctl isolate` does NOT re-apply — re-run
   `boot_profile.sh <mode>` manually if you switch live.
 
-- **Why there is no custom Desktop entry, and why `systemd.unit=` must not be
-  pinned on desktop** — this cost a real debugging session on `tars`; don't
-  "tidy" it back.
+- **Why Desktop must not pin `systemd.unit=`** — this cost a real debugging
+  session on `tars`; don't "tidy" it back.
 
   Pinning `systemd.unit=` on the kernel cmdline makes systemd boot that unit
   **directly and never resolve `default.target`**. PackageKit/GNOME Software
@@ -228,14 +228,21 @@ journalctl -u packagekit-offline-update.service -b -1   # non-empty = the instal
   available"). Symptom presents as "updates fail no matter how many times I
   restart".
 
-  Once the pin is dropped, a custom Desktop entry does nothing the stock
-  `10_linux` "Debian GNU/Linux" entry doesn't already do — both just boot
-  `default.target` — so it was a pure duplicate in the menu and has been removed.
-  The stock entry is also **more robust**: it references a versioned kernel path
-  (`/boot/vmlinuz-<ver>`), while this kit's entries follow the `/vmlinuz`
-  symlink, which a half-finished kernel postinst can leave dangling. Keeping
-  `10_linux` also preserves "Advanced options" — older-kernel rollback and
-  recovery mode — which custom entries do not provide.
+  **Both top-level entries come from this kit**, and `10_linux` is locally
+  patched to comment out its own top-level "simple" entry (search it for
+  `LOCAL EDIT`) so it contributes only the "Advanced options" submenu. Without
+  that patch there would be a third top-level entry duplicating Desktop.
+
+  ⚠️ `/etc/grub.d/10_linux` is a dpkg **conffile**. A `grub-common` upgrade will
+  ask whether to keep your patched version; taking the maintainer's version
+  silently restores the duplicate. `make-grub-entries.sh` checks for the patch
+  and fails loudly if it has gone.
+
+  Trade-off worth knowing: both entries here follow the `/vmlinuz` symlink, so a
+  half-finished kernel postinst that leaves it dangling makes *both*
+  unbootable. "Advanced options" is the mitigation — its entries use versioned
+  paths (`/boot/vmlinuz-<ver>`) and include recovery mode. **Never disable
+  `10_linux` entirely**; it is the recovery path.
 
   The Server entry keeps its pin deliberately: headless hosts don't run GNOME
   Software, and pinning `multi-user.target` is what makes Server mean server.

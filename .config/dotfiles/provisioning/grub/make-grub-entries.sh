@@ -57,6 +57,23 @@ if [ -n "$STRAY" ]; then
     for s in $STRAY; do echo "     mv $s /root/" >&2; done
     FAILED=1
 fi
+
+# 10_linux is a dpkg CONFFILE patched to suppress its top-level "simple" entry
+# (this file provides Desktop instead). A grub-common upgrade can restore the
+# maintainer's version, silently adding a third top-level entry that duplicates
+# Desktop. Detect that rather than let it be discovered in the boot menu.
+if [ -r /etc/grub.d/10_linux ]; then
+    if grep -q 'LOCAL EDIT' /etc/grub.d/10_linux; then
+        echo "10_linux: top-level 'simple' entry still suppressed (good)."
+    else
+        echo "!! /etc/grub.d/10_linux no longer carries the LOCAL EDIT patch." >&2
+        echo "   Its top-level entry will reappear and duplicate the Desktop entry." >&2
+        echo "   Likely cause: a grub-common upgrade replaced the conffile." >&2
+        echo "   Re-comment the 'linux_entry \"\${OS}\" \"\${version}\" simple' call" >&2
+        echo "   (guarded by: if [ \"x\$is_top_level\" = xtrue ] ...)." >&2
+        FAILED=1
+    fi
+fi
 echo
 
 # ---- 1. default.target ----------------------------------------------------

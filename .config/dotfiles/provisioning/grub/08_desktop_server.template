@@ -1,29 +1,37 @@
 #!/bin/sh
 exec tail -n +3 $0
-# Custom top-level GRUB entry: Server (CLI, no GUI). Numbered 08_ so it renders
-# ABOVE 10_linux's entries. Uses /vmlinuz + /initrd.img symlinks (Debian
-# re-points them on kernel upgrade), so the entry survives kernel updates.
+# Custom top-level GRUB entries: Server (CLI) and Desktop (GUI). Numbered 08_ so
+# they render ABOVE 10_linux's "Advanced options" submenu. Both use the /vmlinuz
+# + /initrd.img symlinks (Debian re-points them on kernel upgrade), so the
+# entries survive kernel updates without regeneration.
 #
-# TWO THINGS HERE ARE LOAD-BEARING. Do not "tidy" either one:
+# THESE ARE THE ONLY TOP-LEVEL ENTRIES, BY DESIGN.
+#   /etc/grub.d/10_linux is locally patched to comment out its top-level
+#   "simple" entry (search it for "LOCAL EDIT"), so it contributes only the
+#   "Advanced options" submenu — kernel rollback and recovery mode. Without that
+#   patch you would get a third top-level entry duplicating Desktop.
+#   ⚠️ 10_linux is a dpkg CONFFILE. On a grub-common upgrade, dpkg will ask
+#   whether to keep your patched version. Answering "install the package
+#   maintainer's version" silently restores the duplicate entry. Keep yours, or
+#   re-apply the edit. `make-grub-entries.sh` warns if the patch has gone.
 #
-#   1. There is NO Desktop entry. Desktop mode is 10_linux's stock "Debian
-#      GNU/Linux" entry, which boots default.target and uses a versioned kernel
-#      path (this file follows the /vmlinuz symlink, which a failed kernel
-#      postinst can leave dangling). Adding one back would duplicate it AND cost
-#      you 10_linux's "Advanced options" — kernel rollback and recovery mode.
-#
-#   2. Desktop must NEVER pin systemd.unit=. Pinning it makes systemd boot that
-#      unit directly and never resolve default.target — which silently disables
-#      PackageKit/GNOME Software offline updates, with no error anywhere. The
-#      Server entry keeps its pin because headless boxes don't run GNOME
-#      Software. Consequence: offline updates apply in Desktop mode only.
-#      Full explanation + how to verify: README.md, "Why there is no custom
-#      Desktop entry".
+# DESKTOP MUST NEVER PIN systemd.unit= (do not "fix" this)
+#   Pinning it makes systemd boot that unit directly and never resolve
+#   default.target — which silently disables PackageKit/GNOME Software offline
+#   updates. Staged updates never install and NOTHING is logged: the box
+#   reboots, skips the update, and Software still lists them as pending.
+#   Desktop therefore carries no systemd.unit= and relies on default.target,
+#   which make-grub-entries.sh sets to graphical.target.
+#   Server keeps its pin deliberately — headless boxes don't run GNOME Software,
+#   and pinning multi-user.target is what makes "Server" mean server.
+#   Consequence: offline updates apply in Desktop mode only. unattended-upgrades
+#   still covers security updates in both modes.
+#   Full explanation: README.md, "Why Desktop must not pin systemd.unit=".
 #
 # Mode for boot_profile.sh comes from boot_profile=<mode>, NOT systemd.unit=, so
-# boot target and runtime profile stay independent. Desktop gets its marker from
-# GRUB_CMDLINE_LINUX_DEFAULT (set by make-grub-entries.sh); this file is
-# hand-written and ignores that variable, so Server carries its own below.
+# boot target and runtime profile stay independent. Each entry carries its own
+# marker below; GRUB_CMDLINE_LINUX_DEFAULT carries boot_profile=desktop so the
+# Advanced options entries (which also boot default.target) are marked too.
 #
 # Placeholders substituted per host by make-grub-entries.sh (underscores omitted
 # below so this comment isn't itself substituted):
@@ -35,7 +43,7 @@ exec tail -n +3 $0
 # ASSUMES / and /boot are on the SAME partition (so /vmlinuz resolves). With a
 # separate /boot partition, adjust the linux/initrd paths accordingly.
 
-menuentry 'Debian GNU/Linux Server (CLI, no GUI)' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-server' {
+menuentry 'Debian GNU/Linux Server' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-server' {
 	load_video
 	insmod gzio
 	insmod part_gpt
@@ -43,6 +51,18 @@ menuentry 'Debian GNU/Linux Server (CLI, no GUI)' --class debian --class gnu-lin
 	search --no-floppy --fs-uuid --set=root __ROOT_UUID__
 	echo 'Loading Linux (server -- multi-user.target) ...'
 	linux /vmlinuz root=UUID=__ROOT_UUID__ ro quiet __EXTRA_CMDLINE__boot_profile=server systemd.unit=multi-user.target
+	echo 'Loading initial ramdisk ...'
+	initrd /initrd.img
+}
+
+menuentry 'Debian GNU/Linux Desktop' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-desktop' {
+	load_video
+	insmod gzio
+	insmod part_gpt
+	insmod ext2
+	search --no-floppy --fs-uuid --set=root __ROOT_UUID__
+	echo 'Loading Linux (desktop -- default.target) ...'
+	linux /vmlinuz root=UUID=__ROOT_UUID__ ro quiet __EXTRA_CMDLINE__boot_profile=desktop
 	echo 'Loading initial ramdisk ...'
 	initrd /initrd.img
 }
