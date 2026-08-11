@@ -12,8 +12,8 @@ and the GRUB UUID (generated per host).
 > ### ⚠️ Read before running any of this on a machine you care about
 >
 > This is **not** a copy-and-run quickstart. It makes machine-level changes —
-> rewrites GRUB entries, changes `default.target`, edits `/etc/default/grub`,
-> raises kernel and PAM limits — tuned for the two hosts above. Adapt it; don't
+> rewrites GRUB entries, changes `default.target`, raises kernel and PAM
+> limits — tuned for the two hosts above. Adapt it; don't
 > assume it fits.
 >
 > Read each section before applying it. In particular the GRUB step assumes:
@@ -42,7 +42,7 @@ and the GRUB UUID (generated per host).
 | `load-test/99-loadtest-limits.conf` | `/etc/security/limits.d/` | Raises `nofile` for login/SSH sessions | No |
 | `console/console_autologout.sh` | `/etc/profile.d/console_autologout.sh` | Auto-logout idle **physical console** sessions (not SSH) | No |
 | `grub/08_desktop_server.template` | (generated) | Template for BOTH top-level GRUB entries (Server + Desktop) | UUID substituted |
-| `grub/make-grub-entries.sh` | (run once) | Generates `/etc/grub.d/08_desktop_server`; also sets `default.target` and adds `boot_profile=desktop` to `GRUB_CMDLINE_LINUX_DEFAULT` | — |
+| `grub/make-grub-entries.sh` | (run once) | Generates `/etc/grub.d/08_desktop_server` and sets `default.target=graphical.target` | — |
 
 ---
 
@@ -77,14 +77,19 @@ cd ~/.config/dotfiles/provisioning
 
 # 1. GRUB Server + Desktop menu entries (per-host UUID)
 sudo sh grub/make-grub-entries.sh
-#   ^ also: sets default.target=graphical.target, and adds boot_profile=desktop
-#     to GRUB_CMDLINE_LINUX_DEFAULT, preserving any existing kernel args (it
-#     reads them by sourcing the file, as grub-mkconfig does, so single-quoted
-#     and unquoted forms are handled). Backs up /etc/default/grub first, and
-#     EXITS NON-ZERO if any step could not complete — check before update-grub.
+#   ^ also sets default.target=graphical.target (Desktop boots default.target).
+#     Checks preconditions BEFORE writing and exits non-zero without changing
+#     anything if they fail — check the exit status before update-grub.
+#     Does not modify /etc/default/grub.
+#
+#     Extra kernel params for these two entries go via EXTRA_CMDLINE (they do
+#     NOT inherit GRUB_CMDLINE_LINUX):
+#       sudo EXTRA_CMDLINE="resume=UUID=<fs> resume_offset=<N>" sh grub/make-grub-entries.sh
+#     The value is recorded as a '# EXTRA_CMDLINE=' line in the generated file,
+#     and a later run without it is refused rather than silently dropping it.
 sudo sed -i "s/^GRUB_DEFAULT=.*/GRUB_DEFAULT='gnulinux-server'/" /etc/default/grub  # or 'gnulinux-desktop'
 sudo update-grub
-# Menu: "Debian GNU/Linux Server", "Debian GNU/Linux Desktop" (both this kit),
+# Menu: "Debian GNU/Linux Server (CLI)", "Debian GNU/Linux Desktop (Gnome)",
 # then "Advanced options" (kernel rollback + recovery) from the patched 10_linux.
 # (optional: match boot resolution)  add to /etc/default/grub:
 #   GRUB_GFXMODE=1920x1080 ; GRUB_GFXPAYLOAD_LINUX=keep ; then update-grub
@@ -118,7 +123,7 @@ Reconnect your SSH session after step 3 so the new `nofile` soft limit applies.
 | `DESKTOP_DAEMONS` | Units stopped in **server** mode / started in **desktop** mode (space-separated). Trim to what the host has. |
 | `SERVER_PROFILE` / `DESKTOP_PROFILE` | power-profiles-daemon profile per mode (`powerprofilesctl list`). |
 | `SERVER_STOP_EXTRA` | Extra units to stop **only** in server mode — e.g. a data stack to pause during load tests: `SERVER_STOP_EXTRA="postgresql.service"`. |
-| `DEFAULT_MODE` | Fallback when the cmdline has neither `boot_profile=` nor `systemd.unit=`. Server/Desktop and the Advanced entries all carry a marker; **recovery entries do not**, so this decides their mode. Set `"server"` on a headless box with no Desktop entry. |
+| `DEFAULT_MODE` | Mode when the cmdline carries neither `boot_profile=` nor `systemd.unit=`. The Server and Desktop entries carry a marker; **`10_linux`'s Advanced options entries do not**, so this decides those. Recovery entries never run the service at all (`WantedBy=multi-user.target`, and rescue does not pull it in). Set `"server"` on a headless box with no Desktop entry. |
 
 Apply a mode change live without reboot: `sudo boot_profile.sh server` (or `desktop`).
 
@@ -145,7 +150,8 @@ grep -lE 'gnulinux-(server|desktop)' /etc/grub.d/*   # only 08_desktop_server
 # 10_linux must not emit its own top-level entry (would duplicate Desktop).
 # Test the code, not the LOCAL EDIT comment — a conffile merge can keep the
 # comment and restore the call:
-grep -nE '^\s*linux_entry[^#]*\ssimple' /etc/grub.d/10_linux   # no match = suppressed
+grep -nE '^[[:space:]]*linux_entry[^#]*[[:space:]]simple([[:space:]]|\\|$)' /etc/grub.d/10_linux
+#   no match = suppressed (same expression make-grub-entries.sh uses)
 
 sudo grep -E "^\s*(menuentry|submenu)" /boot/grub/grub.cfg
 #   expect: Server, Desktop, "Advanced options" submenu (+ os-prober / UEFI
@@ -251,10 +257,11 @@ journalctl -u packagekit-offline-update.service -b -1   # non-empty = the instal
   still handles security updates in both modes.
 
   Mode detection uses a separate `boot_profile=` token, so the boot target and
-  the runtime profile are independent. Server and Desktop carry it directly;
-  `GRUB_CMDLINE_LINUX_DEFAULT` supplies it to `10_linux`'s Advanced entries.
-  Recovery entries get neither (`10_linux` omits `_DEFAULT` there) and fall back
-  to `DEFAULT_MODE`.
+  the runtime profile are independent. Server and Desktop carry it directly.
+  `10_linux`'s Advanced options entries carry no marker and fall back to
+  `DEFAULT_MODE` — which is why the kit does not touch
+  `GRUB_CMDLINE_LINUX_DEFAULT` to inject one: that rewrite has to parse sourced
+  shell, and getting it wrong corrupts the file `grub-mkconfig` reads.
 
 ---
 
@@ -267,11 +274,9 @@ sudo rm /usr/local/sbin/boot_profile.sh /etc/systemd/system/boot-profile.service
         /etc/sysctl.d/99-kind-loadtest.conf /etc/security/limits.d/99-loadtest.conf \
         /etc/profile.d/console_autologout.sh /etc/grub.d/08_desktop_server
 sudo systemctl daemon-reload ; sudo sysctl --system
-# undo the two /etc/default/grub changes make-grub-entries.sh makes:
-sudo sed -i 's/ boot_profile=desktop//' /etc/default/grub
 sudo sed -i "s/^GRUB_DEFAULT=.*/GRUB_DEFAULT=0/" /etc/default/grub   # was 'gnulinux-server'
+sudo systemctl set-default graphical.target   # if you changed it
 sudo update-grub
-# (a /etc/default/grub.bak-* from the install is there if you'd rather restore it)
 # restore any daemons stopped by the last server-mode run:
 sudo systemctl start bluetooth cups ModemManager
 ```

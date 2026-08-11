@@ -30,7 +30,7 @@ exec tail -n +3 $0
 # These entries do not inherit GRUB_CMDLINE_LINUX; pass anything needed via
 # EXTRA_CMDLINE.
 
-menuentry 'Debian GNU/Linux Server' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-server' {
+menuentry 'Debian GNU/Linux Server (CLI)' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-server' {
 	load_video
 	insmod gzio
 	insmod part_gpt
@@ -42,7 +42,7 @@ menuentry 'Debian GNU/Linux Server' --class debian --class gnu-linux --class gnu
 	initrd /initrd.img
 }
 
-menuentry 'Debian GNU/Linux Desktop' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-desktop' {
+menuentry 'Debian GNU/Linux Desktop (Gnome)' --class debian --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-desktop' {
 	load_video
 	insmod gzio
 	insmod part_gpt

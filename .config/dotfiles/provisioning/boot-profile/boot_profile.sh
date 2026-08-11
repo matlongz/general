@@ -47,7 +47,11 @@ set_powerprofile() {   # $1 = profile name (via power-profiles-daemon if present
     if ! command -v powerprofilesctl >/dev/null 2>&1; then
         log "power-profiles-daemon not installed; skipping CPU profile"; return
     fi
-    if powerprofilesctl set "$1" 2>&1 | logger -t boot-profile; then
+    # Capture the status before piping: `if cmd | logger` tests logger's exit
+    # status, not the command's, so the failure branch would never run.
+    out=$(powerprofilesctl set "$1" 2>&1); st=$?
+    [ -n "$out" ] && printf '%s' "$out" | logger -t boot-profile
+    if [ "$st" -eq 0 ]; then
         log "power profile -> $1"
     else
         log "WARNING: 'powerprofilesctl set $1' failed (polkit/D-Bus?) — profile NOT changed"; rc=1
